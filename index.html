@@ -796,6 +796,7 @@ body{font-family:'Nunito','Trebuchet MS',sans-serif;}
       <button class="dbtn" id="d5" onclick="setDiff('expert')">🏆 Expert<br><small>48 peças</small></button>
     </div>
 
+    <button class="bplay" id="btnContinue" style="display:none">⏩ Continuar o jogo</button>
     <button class="bplay" onclick="startGame()">🎮 Jogar!</button>
     <p class="credit">© Prof.ª Vanda Várzea</p>
   </div>
@@ -990,6 +991,41 @@ document.getElementById('playerNameInput').addEventListener('input', e=>{
     bubble.innerHTML = 'Olá! Sou o VanBerto\'s!<br>Vamos montar o puzzle da<br><b>Internet Mais Segura! 🌐</b>';
   }
 });
+
+// ── GUARDAR NOME E JOGO (continua mesmo depois de sair) ──
+const VB_NAME_KEY='vb_playername',VB_SAVE_KEY='vb_puzzle_internet_save';
+function vbSaveName(n){try{localStorage.setItem(VB_NAME_KEY,n);}catch(e){}}
+function vbSaveGame(){
+  try{
+    if(gameWon||!pieces.length||!moves)return;
+    localStorage.setItem(VB_SAVE_KEY,JSON.stringify({diff,moves,pos:pieces.map(p=>[parseInt(p.dataset.cc),parseInt(p.dataset.cr)])}));
+  }catch(e){}
+}
+function vbClearSave(){try{localStorage.removeItem(VB_SAVE_KEY);}catch(e){}vbRefreshContinue();}
+function vbLoadSave(){
+  try{
+    const d=JSON.parse(localStorage.getItem(VB_SAVE_KEY)||'null');
+    if(d&&['easy','normal','hard','vhard','expert'].includes(d.diff)&&Array.isArray(d.pos))return d;
+  }catch(e){}
+  return null;
+}
+function vbRefreshContinue(){
+  const b=document.getElementById('btnContinue');
+  if(b)b.style.display=vbLoadSave()?'':'none';
+}
+document.getElementById('btnContinue').addEventListener('click',()=>{
+  const d=vbLoadSave();if(!d){vbRefreshContinue();return;}
+  setDiff(d.diff);
+  window._vbResume=d;
+  startGame();
+});
+document.getElementById('playerNameInput').addEventListener('input',e=>vbSaveName(e.target.value.trim()));
+window.addEventListener('pagehide',vbSaveGame);
+(function(){
+  let n='';try{n=localStorage.getItem(VB_NAME_KEY)||'';}catch(e){}
+  if(n)document.getElementById('playerNameInput').value=n;
+  vbRefreshContinue();
+})();
 
 // ── INTERNET SAFETY TIPS ──
 const TIPS = [
@@ -1345,6 +1381,7 @@ function showStart(){
   document.getElementById('endMod').style.display='none';
   document.getElementById('startMod').style.display='flex';
   clearInterval(timerInt);
+  vbRefreshContinue();
 }
 
 // ── PRE-LOAD IMAGE CACHE ──
@@ -1361,10 +1398,12 @@ function preloadImg(cb){
 function startGame(){
   // Read and save player name
   const nameInput = document.getElementById('playerNameInput');
-  playerName = (nameInput.value || '').trim();
+  playerName = (nameInput.value || '').trim() || 'Herói';
+  vbSaveName(playerName);
+  if(!window._vbResume) vbClearSave();
   // Update HUD name
   const hudName = document.getElementById('hudName');
-  hudName.textContent = playerName || '—';
+  hudName.textContent = playerName;
 
   document.getElementById('startMod').style.display='none';
   document.getElementById('endMod').style.display='none';
@@ -1473,6 +1512,13 @@ function initGame(){
   let attempts=0;
   do{shuffle(pos);attempts++;}
   while(attempts<10&&pos.some((p,i)=>p.c===Math.floor(i%cols)&&p.r===Math.floor(i/cols)));
+  if(window._vbResume){
+    const d=window._vbResume;window._vbResume=null;
+    if(d.pos&&d.pos.length===pos.length){
+      for(let i=0;i<pos.length;i++)pos[i]={c:d.pos[i][0],r:d.pos[i][1]};
+      moves=d.moves||0;document.getElementById('moves').textContent=moves;
+    }
+  }
 
   // Use cached image (already loaded before countdown)
   const dpr = window.devicePixelRatio || 1;
@@ -1620,6 +1666,7 @@ function snap(el){
     setTimeout(()=>el.style.animation='',700);
   }
   updateCorrect(true);
+  vbSaveGame();
 }
 
 function updateCorrect(moved){
@@ -1643,6 +1690,7 @@ function updateCorrect(moved){
 
 // ── VICTORY SEQUENCE ──
 function triggerWin(){
+  vbClearSave();
   soundWin();
   // 1. Confetti on arena
   launchConfettiOnArena();
@@ -1761,6 +1809,7 @@ hb.addEventListener('touchcancel',()=>{ho.style.opacity=0;});
 
 document.getElementById('btnNew').onclick=()=>{
   gameWon=false;
+  vbClearSave();
   document.getElementById('victoryReveal').classList.remove('show');
   showCountdown(()=>initGame());
 };
